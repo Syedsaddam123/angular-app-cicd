@@ -1,16 +1,59 @@
 pipeline {
     agent { label 'syed' } // agent VM
+
+    environment {
+        APP_NAME = "angular-app"
+        CONTAINER_NAME = "angular-app-container"
+        DOCKER_IMAGE = "angular-app:latest"
+    }
+
     stages {
-        stage('Install dependencies') {
+
+        stage('Checkout Source') {
             steps {
-                sh 'npm install'
+                checkout scm
             }
         }
-        stage('Build Angular') {
+
+        stage('Install Dependencies') {
             steps {
-                sh 'npm run build'
+                sh "npm install"
             }
         }
-        // optional: Docker build, deploy
+
+        stage('Build Angular (Production)') {
+            steps {
+                sh "npm run build --prod"
+            }
+        }
+
+        stage('Build Docker Image') {
+            steps {
+                sh """
+                docker build -t ${DOCKER_IMAGE} .
+                """
+            }
+        }
+
+        stage('Deploy Container') {
+            steps {
+                sh """
+                docker rm -f ${CONTAINER_NAME} || true
+                docker run -d -p 8080:80 --name ${CONTAINER_NAME} ${DOCKER_IMAGE}
+                """
+            }
+        }
+    }
+
+    post {
+        always {
+            echo "Build finished..."
+        }
+        success {
+            echo "Deployment successful! App running on port 8080."
+        }
+        failure {
+            echo "Pipeline failed. Check logs."
+        }
     }
 }
