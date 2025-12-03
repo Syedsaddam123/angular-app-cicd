@@ -1,67 +1,78 @@
 pipeline {
-    agent { label 'syed' } // agent VM
+    agent { label 'syed' }
 
     environment {
-        APP_NAME = "angular-app"
-        CONTAINER_NAME = "angular-app-container"
-        DOCKER_IMAGE = "angular-app:latest"
+        IMAGE_NAME   = "angular-app"
+        TAG          = "${env.BUILD_NUMBER}"
+    }
+
+    options {
+        disableConcurrentBuilds()
+        buildDiscarder(logRotator(numToKeepStr: '5'))
+        timestamps()
     }
 
     stages {
 
-        stage('Checkout Source') {
+        stage('Pre-Cleanup') {
+            steps {
+                sh '''
+                    docker system prune -af || true
+                    docker builder prune -af || true
+                    rm -rf node_modules || true
+                '''
+            }
+        }
+
+        stage('Checkout') {
             steps {
                 checkout scm
             }
         }
 
-        stage('Install Dependencies') {
+        stage('Install & Build Angular') {
             steps {
-                sh "npm install"
+                sh '''
+                    npm ci
+                    npm run build --prod
+                '''
             }
         }
 
-        stage('Build Angular (Production)') {
-            steps {
-                sh "npm run build --prod"
-            }
-        }
-
-        stage('Build Docker Image') {
+        stage('Docker Build') {
             steps {
                 sh """
-                docker build -t ${DOCKER_IMAGE} .
+                    docker build \
+                    --no-cache \
+                    -t ${IMAGE_NAME}:${TAG} .
                 """
             }
         }
 
-        stage('Deploy Container') {
+        stage('Deploy') {
             steps {
                 sh """
-                docker rm -f ${CONTAINER_NAME} || true
-                docker run -d -p 8080:80 --name ${CONTAINER_NAME} ${DOCKER_IMAGE}
+                    docker rm -f ${IMAGE_NAME} || true
+                    docker run -d -p 8080:80 \
+                        --name ${IMAGE_NAME} \
+                        ${IMAGE_NAME}:${TAG}
                 """
             }
         }
-        stage('Cleanup Docker') {
-            steps {
-                sh """
-                docker image prune -a -f || true
-                docker container prune -f || true
-                """
-            }
-        }
+
     }
 
     post {
         always {
+            sh """
+                docker image prune -af || true
+                docker container prune -f || true
+            """
             echo "Build finished..."
         }
+
         success {
-            echo "Deployment successful! App running on port 8080."
-        }
-        failure {
-            echo "Pipeline failed. Check logs."
+            echo "App deployed: http://<agent-ip>:8080"
         }
     }
 }
