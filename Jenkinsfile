@@ -1,5 +1,5 @@
 pipeline {
-    agent { label 'syed' } // agent VM
+    agent { label 'syed' }
 
     environment {
         APP_NAME = "angular-app"
@@ -30,7 +30,7 @@ pipeline {
         stage('Build Docker Image') {
             steps {
                 sh """
-                docker build -t ${DOCKER_IMAGE} .
+                docker build --no-cache -t ${DOCKER_IMAGE} .
                 """
             }
         }
@@ -39,15 +39,23 @@ pipeline {
             steps {
                 sh """
                 docker rm -f ${CONTAINER_NAME} || true
+                
                 docker run -d -p 8080:80 --name ${CONTAINER_NAME} ${DOCKER_IMAGE}
                 """
             }
         }
+
         stage('Cleanup Docker') {
             steps {
                 sh """
-                docker image prune -a -f || true
+                echo "Cleaning old containers..."
                 docker container prune -f || true
+
+                echo "Cleaning old images..."
+                docker image prune -a -f || true
+
+                echo "Cleaning build cache..."
+                docker builder prune -a -f || true
                 """
             }
         }
