@@ -9,31 +9,29 @@ pipeline {
 
     stages {
 
-        stage('Cleanup BEFORE Build') {
+        stage('Checkout Source') {
             steps {
-                sh """
-                docker rm -f \$(docker ps -aq) || true
-                docker system prune -a -f || true
-                """
+                checkout scm
             }
         }
 
-        stage('Checkout Source') {
-            steps { checkout scm }
+        stage('Install Dependencies') {
+            steps {
+                sh "npm install"
+            }
         }
 
-        stage('Install & Build Angular') {
+        stage('Build Angular (Production)') {
             steps {
-                sh """
-                npm install
-                npm run build --prod
-                """
+                sh "npm run build --prod"
             }
         }
 
         stage('Build Docker Image') {
             steps {
-                sh "docker build -t ${DOCKER_IMAGE} ."
+                sh """
+                docker build --no-cache -t ${DOCKER_IMAGE} .
+                """
             }
         }
 
@@ -41,7 +39,24 @@ pipeline {
             steps {
                 sh """
                 docker rm -f ${CONTAINER_NAME} || true
+                
+
                 docker run -d -p 8080:80 --name ${CONTAINER_NAME} ${DOCKER_IMAGE}
+                """
+            }
+        }
+
+        stage('Cleanup Docker') {
+            steps {
+                sh """
+                echo "Cleaning old containers..."
+                docker container prune -f || true
+
+                echo "Cleaning old images..."
+                docker image prune -a -f || true
+
+                echo "Cleaning build cache..."
+                docker builder prune -a -f || true
                 """
             }
         }
@@ -52,7 +67,10 @@ pipeline {
             echo "Build finished..."
         }
         success {
-            echo "Running on 8080"
+            echo "Deployment successful! App running on port 8080."
+        }
+        failure {
+            echo "Pipeline failed. Check logs."
         }
     }
 }
