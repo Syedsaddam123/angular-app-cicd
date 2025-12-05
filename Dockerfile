@@ -1,4 +1,3 @@
-# Pulling nginx image
 FROM nginx:alpine
 
 COPY dist/Angular-app/browser /usr/share/nginx/html
